@@ -4,7 +4,7 @@ import MatchCountdown from '@/components/MatchCountdown';
 import MatchStatsSection from '@/components/MatchStatsSection';
 import LiveScoreboard from '@/components/LiveScoreboard';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 
 export const revalidate = 30;
 
@@ -18,10 +18,10 @@ export default async function WatchPage({ params, searchParams }) {
   let errorMsg = null;
   let stats = null;
 
-const userFacingErrors = {
-  'No streams available from any provider': 'No streams are available for this match right now.',
-  'Match not found': 'This match could not be found. It may have been removed.',
-};
+  const userFacingErrors = {
+    'No streams available from any provider': 'No streams are available for this match right now.',
+    'Match not found': 'This match could not be found. It may have been removed.',
+  };
 
   try {
     match = await getMatchDetails(matchId);
@@ -72,15 +72,19 @@ const userFacingErrors = {
   const commentary = stats?.commentary || [];
 
   return (
-    <div className="space-y-4">
-      <Link
-        href={`/?tab=${backTab}`}
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </Link>
+    <div className="space-y-8 w-full max-w-6xl mx-auto">
+      {/* Back navigation */}
+      <div>
+        <Link
+          href={`/?tab=${backTab}`}
+          className="inline-flex items-center gap-2 rounded-lg bg-zinc-950/70 border border-zinc-850 px-3.5 py-1.5 text-xs font-bold text-zinc-400 hover:text-white hover:border-zinc-700 hover:shadow-md transition-all group"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          Back to Fixtures
+        </Link>
+      </div>
 
+      {/* Scoreboard block */}
       {match.status === 'live' && match.homeScore !== undefined ? (
         <LiveScoreboard matchId={matchId} initial={{
           status: match.status,
@@ -102,32 +106,46 @@ const userFacingErrors = {
         <MatchCountdown timestamp={match.timestamp} status={match.status} />
       )}
 
+      {/* Special notifications banners */}
       {match.status === 'live' && match.homeScore !== undefined && match.currentMinuteNumber >= 90 && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-center">
-          <p className="text-sm font-medium text-amber-400">Finished — watch other matches</p>
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-center shadow-md">
+          <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠️ Full Time Completed</p>
+          <p className="mt-0.5 text-xs text-zinc-500">The fixture has finished. Streams may terminate soon.</p>
         </div>
       )}
 
       {match.status === 'live' && match.homeScore !== undefined && match.currentMinuteNumber === 45 && (
-        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 text-center">
-          <p className="text-sm font-medium text-blue-400">Halftime — stream will begin in a bit</p>
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-center shadow-md">
+          <p className="text-xs font-bold text-violet-400 uppercase tracking-widest">⚽ Halftime Interval</p>
+          <p className="mt-0.5 text-xs text-zinc-500">Teams are in the locker room. The live stream will return shortly.</p>
         </div>
       )}
 
+      {/* Player window block */}
       {streamUrl && !errorMsg ? (
         <StreamPlayer streamUrl={streamUrl} channels={channels} matchTitle={match.title} matchStatus={match.status} />
       ) : channels.length > 0 ? (
         <StreamPlayer streamUrl={streamUrl} channels={channels} matchTitle={match.title} matchStatus={match.status} />
       ) : (
-        <div className="flex aspect-video items-center justify-center rounded-lg border border-border bg-zinc-900/50">
-          <div className="text-center">
-            <p className="text-sm font-medium text-zinc-400">Stream unavailable</p>
-            {errorMsg && <p className="mt-1 text-xs text-zinc-600">{errorMsg}</p>}
-            <p className="mt-2 text-xs text-zinc-600">Try another match or check back later.</p>
+        <div className="flex aspect-video items-center justify-center rounded-2xl border border-zinc-800 bg-[#060609] p-6 shadow-2xl">
+          <div className="text-center space-y-3 max-w-xs">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800">
+              <RefreshCw className="h-5 w-5 text-zinc-500 animate-spin" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">Stream is Offline</p>
+              {errorMsg ? (
+                <p className="mt-1 text-xs text-zinc-500">{errorMsg}</p>
+              ) : (
+                <p className="mt-1 text-xs text-zinc-500">The aggregation engine is resolving stream routes.</p>
+              )}
+            </div>
+            <p className="text-[10px] text-zinc-650">Please reload the page or check back near kick-off.</p>
           </div>
         </div>
       )}
 
+      {/* Stats & commentary details block */}
       <MatchStatsSection teamStats={teamStats} commentary={commentary} homeTeam={match.homeTeam} awayTeam={match.awayTeam} />
     </div>
   );

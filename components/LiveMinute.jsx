@@ -14,31 +14,39 @@ export default function LiveMinute({ apiMinute, apiMinuteNumber }) {
   const isHT = adjusted === 45;
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="flex items-center gap-1.5">
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <button
           onClick={() => setOffset(o => Math.max(o - 1, -5))}
-          className="rounded bg-zinc-800 p-0.5 text-zinc-600 hover:bg-zinc-700 hover:text-zinc-400 transition-colors"
+          className="rounded-full bg-zinc-800 p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-colors shadow-inner"
           aria-label="Minus 1 minute"
         >
-          <Minus className="h-2.5 w-2.5" />
+          <Minus className="h-3 w-3" />
         </button>
-        <span className="text-xs text-zinc-500 font-mono min-w-[2ch] text-center tabular-nums">{display}</span>
+        
+        <span className="text-[13px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-violet-950/60 border border-violet-850/80 text-violet-400 min-w-[5ch] text-center tabular-nums shadow-sm">
+          {display}
+        </span>
+        
         <button
           onClick={() => setOffset(o => Math.min(o + 1, 10))}
-          className="rounded bg-zinc-800 p-0.5 text-zinc-600 hover:bg-zinc-700 hover:text-zinc-400 transition-colors"
+          className="rounded-full bg-zinc-800 p-1 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-colors shadow-inner"
           aria-label="Plus 1 minute"
         >
-          <Plus className="h-2.5 w-2.5" />
+          <Plus className="h-3 w-3" />
         </button>
       </div>
+
       <div className="flex items-center gap-1">
         {isFT || isHT ? (
-          <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">
+          <span className="text-[9px] font-extrabold text-amber-500 uppercase tracking-widest bg-amber-550/10 border border-amber-500/20 px-2 py-0.5 rounded">
             {isFT ? 'FT' : 'HT'}
           </span>
         ) : (
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+          </span>
         )}
       </div>
     </div>
