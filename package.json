@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "build:cloudflare": "npx @opennextjs/cloudflare",
     "test": "vitest run"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.19.11",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
