@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build:cloudflare": "npx @opennextjs/cloudflare",
+    "build:cloudflare": "opennextjs-cloudflare build",
     "test": "vitest run"
   },
   "dependencies": {
