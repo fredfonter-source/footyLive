@@ -3,26 +3,34 @@ import crypto from 'crypto';
 import logger from '@/lib/logger';
 
 const SECRET_KEY = process.env.STREAM_SECRET || 'my-super-secret-key-786769-w01verine';
+const VPS_PROXY = process.env.VPS_PROXY_URL || 'https://cdn.dhammatayartaw.com';
+const PROXY_SECRET_TOKEN = process.env.PROXY_SECRET_TOKEN || 'my_super_secret_token_123';
 
-// VPS Proxy Configuration
-const VPS_PROXY = process.env.VPS_PROXY_URL || 'https://cdn.dhammatayartaw.com'; // Change this!
-const PROXY_SECRET_TOKEN = process.env.PROXY_SECRET_TOKEN || 'my_super_secret_token_123'; // Must match server.js
-
-// Map providers to their referer URLs
-const REFERER_MAP: Record<string, string> = {
-  'streamed.pk': 'https://streamed.pk/',
-  'watchfooty': 'https://watchfooty.st/',
-  'cdnlive': 'https://cdnlive.xyz/',
-  'default': 'https://streamed.pk/'
+// ✅ Complete list of all your providers and their referers
+const PROVIDER_CONFIG = {
+  'streamed.pk': {
+    referer: 'https://streamed.pk/',
+    domains: ['streamed.pk', 'embed.streamed.pk']
+  },
+  'watchfooty': {
+    referer: 'https://watchfooty.st/',
+    domains: ['watchfooty.st', 'embed.watchfooty.st']
+  },
+  'cdnlive': {
+    referer: 'https://cdnlive.xyz/',
+    domains: ['cdnlive.xyz', 'embed.cdnlive.xyz']
+  },
+  // Add more providers as needed
 };
 
-function detectProvider(url: string): string {
-  for (const [key, referer] of Object.entries(REFERER_MAP)) {
-    if (url.includes(key)) {
-      return referer;
+function getProviderConfig(url: string): { referer: string; name: string } {
+  for (const [name, config] of Object.entries(PROVIDER_CONFIG)) {
+    if (config.domains.some(domain => url.includes(domain))) {
+      return { referer: config.referer, name };
     }
   }
-  return REFERER_MAP['default'];
+  // Default fallback
+  return { referer: 'https://streamed.pk/', name: 'unknown' };
 }
 
 export async function GET(request: NextRequest) {
@@ -72,21 +80,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL scheme' }, { status: 400 });
     }
 
-    // ✅ NEW: Instead of redirecting, return the VPS proxy URL
-    const referer = detectProvider(decoded);
+    // ✅ Get the correct referer for this specific provider
+    const providerConfig = getProviderConfig(decoded);
     
-    const proxyUrl = `${VPS_PROXY}/proxy?url=${encodeURIComponent(decoded)}&referer=${encodeURIComponent(referer)}&token=${PROXY_SECRET_TOKEN}`;
+    const proxyUrl = `${VPS_PROXY}/proxy?url=${encodeURIComponent(decoded)}&referer=${encodeURIComponent(providerConfig.referer)}&token=${PROXY_SECRET_TOKEN}`;
 
     logger.info('Generated proxy URL', {
-      original: decoded.substring(0, 50) + '...',
-      proxy: proxyUrl.substring(0, 50) + '...',
-      provider: referer
+      provider: providerConfig.name,
+      referer: providerConfig.referer,
+      original: decoded.substring(0, 50) + '...'
     });
 
     return NextResponse.json({ 
       success: true,
-      url: proxyUrl,  // This is the proxied URL for external players
-      originalUrl: decoded // Keep this for web player fallback if needed
+      url: proxyUrl,
+      originalUrl: decoded,
+      provider: providerConfig.name
     });
 
   } catch (err: any) {
