@@ -20,6 +20,10 @@ const PROVIDER_CONFIG = {
     referer: 'https://cdnlive.xyz/',
     domains: ['cdnlive.xyz', 'embed.cdnlive.xyz']
   },
+  'sportsembed': {
+    referer: 'https://sportsembed.su/',
+    domains: ['sportsembed.su']
+  },
   // Add more providers as needed
 };
 
