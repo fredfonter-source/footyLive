@@ -17,6 +17,7 @@ export interface Channel {
   proxiedUrl?: string;
   provider?: string;
   quality?: string;
+  referer?: string; // ✅ Added: Required for the VPS proxy to bypass hotlink protection
 }
 
 export interface Match {
