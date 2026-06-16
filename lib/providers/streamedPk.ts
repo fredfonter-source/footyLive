@@ -25,6 +25,7 @@ interface StreamedRawMatch {
 export class StreamedPkProvider implements StreamProvider {
   id = 'streamed';
   name = 'Streamed.pk';
+  referer = 'https://streamed.pk/'; // ✅ Add referer for this provider
 
   private async fetchRawMatches(): Promise<StreamedRawMatch[]> {
     const cache = getCacheManager();
@@ -40,29 +41,105 @@ export class StreamedPkProvider implements StreamProvider {
   }
 
   async fetchMatches(): Promise<Match[]> {
-    // Streamed.pk matches are not listed top-level,
-    // they are resolved dynamically as fallback channels.
     return [];
+  }
+
+  // ✅ NEW: Extract direct .m3u8 URL from embed page
+  private async extractStreamFromEmbed(embedUrl: string): Promise<string | null> {
+    try {
+      const response = await fetchWithTimeout(embedUrl, SHORT_TIMEOUT, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://streamed.pk/'
+        }
+      });
+
+      // fetchWithTimeout might return parsed JSON or text
+      const html = typeof response === 'string' ? response : JSON.stringify(response);
+
+      // Try multiple regex patterns to find the .m3u8 URL
+      const patterns = [
+        /file:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+        /source:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+        /src:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+        /["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i,
+        /url:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          logger.info('Extracted .m3u8 from embed', { embedUrl, streamUrl: match[1].substring(0, 50) });
+          return match[1];
+        }
+      }
+
+      logger.warn('Could not extract .m3u8 from embed page', { embedUrl });
+      return null;
+    } catch (err) {
+      logger.error('Failed to fetch embed page', err, { embedUrl });
+      return null;
+    }
   }
 
   private async resolveStreamedStream(source: string, id: string): Promise<{ url: string; quality: string }[]> {
     try {
       const url = `${STREAMED_STREAM}/${source}/${id}`;
       const data = await fetchWithTimeout(url, SHORT_TIMEOUT);
+      
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((s: any) => ({
-          url: s.embedUrl || s.url || '',
-          quality: s.hd ? 'HD' : 'SD',
-        }));
+        const results = [];
+        
+        for (const s of data) {
+          let streamUrl = s.url || '';
+          
+          // ✅ If we have an embedUrl, extract the real .m3u8 from it
+          if (s.embedUrl && !s.url) {
+            const extractedUrl = await this.extractStreamFromEmbed(s.embedUrl);
+            if (extractedUrl) {
+              streamUrl = extractedUrl;
+            } else {
+              // Fallback: return embedUrl but it won't work in external players
+              streamUrl = s.embedUrl;
+              logger.warn('Using embedUrl as fallback (may not work)', { embedUrl: s.embedUrl });
+            }
+          }
+          
+          if (streamUrl) {
+            results.push({
+              url: streamUrl,
+              quality: s.hd ? 'HD' : 'SD',
+            });
+          }
+        }
+        
+        return results;
       }
+      
+      // Handle single object response
       if (data?.url || data?.embedUrl || data?.streamUrl || data?.iframe) {
-        return [{
-          url: data.url || data.embedUrl || data.streamUrl || data.iframe,
-          quality: 'HD',
-        }];
+        let streamUrl = data.url || data.streamUrl || '';
+        
+        if (data.embedUrl && !data.url) {
+          const extractedUrl = await this.extractStreamFromEmbed(data.embedUrl);
+          if (extractedUrl) {
+            streamUrl = extractedUrl;
+          } else {
+            streamUrl = data.embedUrl;
+          }
+        }
+        
+        if (streamUrl) {
+          return [{
+            url: streamUrl,
+            quality: 'HD',
+          }];
+        }
       }
+      
       return [];
     } catch (err) {
+      logger.error('Streamed.pk stream resolution failed', err, { source, id });
       return [];
     }
   }
@@ -104,6 +181,7 @@ export class StreamedPkProvider implements StreamProvider {
                 url: su.url,
                 provider: this.id,
                 quality: su.quality || 'HD',
+                referer: this.referer // ✅ Pass referer to channel
               });
             }
           }
