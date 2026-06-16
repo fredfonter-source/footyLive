@@ -10,6 +10,9 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
   const [streamStatus, setStreamStatus] = useState('loading');
   const [loadTimeout, setLoadTimeout] = useState(null);
   
+  // ✅ NEW: State to hold the actual proxy URL after fetching JSON
+  const [resolvedProxyUrl, setResolvedProxyUrl] = useState(null);
+  
   // Custom video state hooks
   const [hlsLoaded, setHlsLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -24,14 +27,62 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
   const hlsInstanceRef = useRef(null);
 
   const allChannels = channels && channels.length > 0 ? channels : [{ name: 'Stream 1', url: streamUrl, proxiedUrl: streamUrl }];
-  const currentUrl = allChannels[activeChannel]?.proxiedUrl || allChannels[activeChannel]?.url || streamUrl;
+  const currentApiUrl = allChannels[activeChannel]?.proxiedUrl || allChannels[activeChannel]?.url || streamUrl;
+
+  // ✅ NEW: Fetch the proxy URL from the API when channel changes
+  useEffect(() => {
+    let isMounted = true;
+    
+    const fetchProxyUrl = async () => {
+      setIsLoading(true);
+      setStreamStatus('loading');
+      setResolvedProxyUrl(null);
+      
+      try {
+        // If it's already a direct stream URL (not an API endpoint), use it directly
+        if (currentApiUrl.includes('.m3u8') || currentApiUrl.includes('.mpd') || currentApiUrl.includes('.mp4')) {
+          if (isMounted) {
+            setResolvedProxyUrl(currentApiUrl);
+          }
+          return;
+        }
+        
+        // Fetch the JSON from the API
+        const response = await fetch(currentApiUrl);
+        const data = await response.json();
+        
+        if (data.success && data.url) {
+          if (isMounted) {
+            setResolvedProxyUrl(data.url);
+          }
+        } else {
+          if (isMounted) {
+            setStreamStatus('error');
+            setIsLoading(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching proxy URL:', error);
+        if (isMounted) {
+          setStreamStatus('error');
+          setIsLoading(false);
+        }
+      }
+    };
+    
+    fetchProxyUrl();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [currentApiUrl]);
 
   // Auto-detect direct stream sources like .m3u8, .mpd, .mp4
-  const isDirectHls = currentUrl && (
-    currentUrl.includes('.m3u8') || 
-    currentUrl.includes('.mpd') || 
-    currentUrl.includes('/hls/') || 
-    currentUrl.includes('.mp4')
+  const isDirectHls = resolvedProxyUrl && (
+    resolvedProxyUrl.includes('.m3u8') || 
+    resolvedProxyUrl.includes('.mpd') || 
+    resolvedProxyUrl.includes('/hls/') || 
+    resolvedProxyUrl.includes('.mp4')
   );
 
   const handleLoad = () => {
@@ -65,9 +116,9 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     document.body.appendChild(script);
   }, [isDirectHls]);
 
-  // Video element binding effect
+  // Video element binding effect - ✅ UPDATED to use resolvedProxyUrl
   useEffect(() => {
-    if (!isDirectHls || !hlsLoaded || !videoRef.current) return;
+    if (!isDirectHls || !hlsLoaded || !videoRef.current || !resolvedProxyUrl) return;
 
     const video = videoRef.current;
     
@@ -82,7 +133,7 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
 
     // Safari / iOS Native HLS support
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = currentUrl;
+      video.src = resolvedProxyUrl;
       const onLoadedMetadata = () => {
         setIsLoading(false);
         setStreamStatus('active');
@@ -108,7 +159,7 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
       });
       hlsInstanceRef.current = hls;
 
-      hls.loadSource(currentUrl);
+      hls.loadSource(resolvedProxyUrl);
       hls.attachMedia(video);
 
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
@@ -143,11 +194,11 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
         }
       };
     }
-  }, [currentUrl, isDirectHls, hlsLoaded]);
+  }, [resolvedProxyUrl, isDirectHls, hlsLoaded]);
 
   // General connection timeouts
   useEffect(() => {
-    if (isDirectHls) return;
+    if (isDirectHls || !resolvedProxyUrl) return;
     setIsLoading(true);
     setStreamStatus('loading');
     const timeout = setTimeout(() => {
@@ -156,7 +207,7 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     }, 10000);
     setLoadTimeout(timeout);
     return () => clearTimeout(timeout);
-  }, [currentUrl, isDirectHls]);
+  }, [resolvedProxyUrl, isDirectHls]);
 
   const tryNextSource = () => {
     if (activeChannel < allChannels.length - 1) {
@@ -169,21 +220,23 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
   const reloadStream = () => {
     setIsLoading(true);
     setStreamStatus('loading');
+    setResolvedProxyUrl(null); // ✅ Reset to trigger re-fetch
+    
     if (isDirectHls) {
       if (videoRef.current) {
         const video = videoRef.current;
         if (hlsInstanceRef.current) {
-          hlsInstanceRef.current.loadSource(currentUrl);
+          hlsInstanceRef.current.loadSource(resolvedProxyUrl);
           hlsInstanceRef.current.startLoad();
         } else {
           video.src = '';
-          video.src = currentUrl;
+          video.src = resolvedProxyUrl;
           video.load();
         }
       }
     } else {
       if (iframeRef.current) {
-        iframeRef.current.src = currentUrl;
+        iframeRef.current.src = resolvedProxyUrl;
       }
     }
   };
@@ -316,9 +369,9 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           />
         ) : sandboxShield ? (
           <iframe
-            key={`${currentUrl}-secured`}
+            key={`${resolvedProxyUrl}-secured`}
             ref={iframeRef}
-            src={currentUrl}
+            src={resolvedProxyUrl}
             className="absolute inset-0 h-full w-full"
             allowFullScreen
             allow="autoplay; fullscreen"
@@ -328,9 +381,9 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           />
         ) : (
           <iframe
-            key={`${currentUrl}-compat`}
+            key={`${resolvedProxyUrl}-compat`}
             ref={iframeRef}
-            src={currentUrl}
+            src={resolvedProxyUrl}
             className="absolute inset-0 h-full w-full"
             allowFullScreen
             allow="autoplay; fullscreen"
