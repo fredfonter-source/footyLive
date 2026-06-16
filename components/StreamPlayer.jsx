@@ -10,10 +10,8 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
   const [streamStatus, setStreamStatus] = useState('loading');
   const [loadTimeout, setLoadTimeout] = useState(null);
   
-  // ✅ NEW: State to hold the actual proxy URL after fetching JSON
   const [resolvedProxyUrl, setResolvedProxyUrl] = useState(null);
   
-  // Custom video state hooks
   const [hlsLoaded, setHlsLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [volume, setVolume] = useState(0.8);
@@ -28,8 +26,10 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
 
   const allChannels = channels && channels.length > 0 ? channels : [{ name: 'Stream 1', url: streamUrl, proxiedUrl: streamUrl }];
   const currentApiUrl = allChannels[activeChannel]?.proxiedUrl || allChannels[activeChannel]?.url || streamUrl;
+  
+  // ✅ FIX: Get the ORIGINAL URL to detect HLS
+  const currentOriginalUrl = allChannels[activeChannel]?.url || streamUrl;
 
-  // ✅ NEW: Fetch the proxy URL from the API when channel changes
   useEffect(() => {
     let isMounted = true;
     
@@ -39,7 +39,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
       setResolvedProxyUrl(null);
       
       try {
-        // If it's already a direct stream URL (not an API endpoint), use it directly
         if (currentApiUrl.includes('.m3u8') || currentApiUrl.includes('.mpd') || currentApiUrl.includes('.mp4')) {
           if (isMounted) {
             setResolvedProxyUrl(currentApiUrl);
@@ -47,7 +46,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           return;
         }
         
-        // Fetch the JSON from the API
         const response = await fetch(currentApiUrl);
         const data = await response.json();
         
@@ -77,12 +75,12 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     };
   }, [currentApiUrl]);
 
-  // Auto-detect direct stream sources like .m3u8, .mpd, .mp4
-  const isDirectHls = resolvedProxyUrl && (
-    resolvedProxyUrl.includes('.m3u8') || 
-    resolvedProxyUrl.includes('.mpd') || 
-    resolvedProxyUrl.includes('/hls/') || 
-    resolvedProxyUrl.includes('.mp4')
+  // ✅ FIX: Check the ORIGINAL URL for HLS detection, not the proxy URL
+  const isDirectHls = currentOriginalUrl && (
+    currentOriginalUrl.includes('.m3u8') || 
+    currentOriginalUrl.includes('.mpd') || 
+    currentOriginalUrl.includes('/hls/') || 
+    currentOriginalUrl.includes('.mp4')
   );
 
   const handleLoad = () => {
@@ -97,7 +95,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     if (loadTimeout) clearTimeout(loadTimeout);
   };
 
-  // Dynamically load hls.js from highly-resilient CDN if an HLS stream is loaded
   useEffect(() => {
     if (!isDirectHls) return;
     if (window.Hls) {
@@ -116,7 +113,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     document.body.appendChild(script);
   }, [isDirectHls]);
 
-  // Video element binding effect - ✅ UPDATED to use resolvedProxyUrl
   useEffect(() => {
     if (!isDirectHls || !hlsLoaded || !videoRef.current || !resolvedProxyUrl) return;
 
@@ -131,7 +127,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     setStreamStatus('loading');
     setIsPlaying(true);
 
-    // Safari / iOS Native HLS support
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = resolvedProxyUrl;
       const onLoadedMetadata = () => {
@@ -151,11 +146,10 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
         video.removeEventListener('error', onNativeError);
       };
     } else if (window.Hls) {
-      // Chrome/Firefox Hls.js setup
       const hls = new window.Hls({
-        maxBufferSize: 20 * 1024 * 1024, // 20MB Max buffer
-        maxBufferLength: 20, // 20s
-        liveSyncDuration: 3, // Live delay
+        maxBufferSize: 20 * 1024 * 1024,
+        maxBufferLength: 20,
+        liveSyncDuration: 3,
       });
       hlsInstanceRef.current = hls;
 
@@ -196,7 +190,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
     }
   }, [resolvedProxyUrl, isDirectHls, hlsLoaded]);
 
-  // General connection timeouts
   useEffect(() => {
     if (isDirectHls || !resolvedProxyUrl) return;
     setIsLoading(true);
@@ -220,7 +213,7 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
   const reloadStream = () => {
     setIsLoading(true);
     setStreamStatus('loading');
-    setResolvedProxyUrl(null); // ✅ Reset to trigger re-fetch
+    setResolvedProxyUrl(null);
     
     if (isDirectHls) {
       if (videoRef.current) {
@@ -289,7 +282,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
 
   return (
     <div className="w-full space-y-4">
-      {/* Player window container */}
       <div 
         ref={playerRef} 
         className={`relative overflow-hidden bg-black shadow-2xl transition-all duration-500 ease-out group ${
@@ -299,7 +291,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
         }`}
         style={isTheaterMode ? undefined : { aspectRatio: '16/9' }}
       >
-        {/* Loading Spinner Screen */}
         {isLoading && streamStatus !== 'error' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050508]">
             <div className="relative flex items-center justify-center">
@@ -313,7 +304,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Stream Load Error Screen */}
         {streamStatus === 'error' && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#050508]/98 px-6 text-center">
             <div className="mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 border border-red-500/20">
@@ -340,7 +330,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Timeout Screen */}
         {streamStatus === 'offline' && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#050508]/98 px-6 text-center">
             <div className="mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20">
@@ -359,7 +348,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Video Player or Sandboxed Iframe Embed */}
         {isDirectHls ? (
           <video
             ref={videoRef}
@@ -392,7 +380,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           />
         )}
 
-        {/* Play Icon Center Overlay (When Paused) */}
         {isDirectHls && !isPlaying && streamStatus === 'active' && (
           <div 
             onClick={handlePlayPause}
@@ -404,7 +391,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Upcoming Status Banner overlay */}
         {isUpcoming && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 px-6 text-center">
             <ShieldAlert className="h-10 w-10 text-violet-400 mb-3" />
@@ -415,7 +401,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Floating details overlay (Top left) */}
         <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-none">
           <span className="rounded-full bg-black/75 backdrop-blur-md border border-zinc-800/80 px-3 py-1 text-xs font-bold text-white">
             {matchTitle}
@@ -428,11 +413,9 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           )}
         </div>
 
-        {/* CUSTOM VIDEO CONTROLS OVERLAY (Only for Direct HLS Video) */}
         {isDirectHls && streamStatus === 'active' && (
           <div className="absolute bottom-0 left-0 right-0 z-20 p-4 bg-gradient-to-t from-black/95 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col gap-2.5">
             
-            {/* Live timeline indicator */}
             <div className="flex items-center gap-3">
               <div className="h-1.5 flex-1 rounded-full bg-zinc-800/80 overflow-hidden relative">
                 <div className="absolute inset-y-0 left-0 right-0 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-full" />
@@ -443,10 +426,8 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
               </span>
             </div>
 
-            {/* Custom Control Buttons Toolbar */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3.5">
-                {/* Play/Pause Button */}
                 <button
                   onClick={handlePlayPause}
                   className="rounded-lg bg-white/10 hover:bg-white/20 p-2 text-white transition-all active:scale-90"
@@ -455,7 +436,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
                   {isPlaying ? <Pause className="h-4 w-4 fill-white" /> : <Play className="h-4 w-4 fill-white" />}
                 </button>
 
-                {/* Volume / Mute slider control */}
                 <div className="flex items-center gap-2 group/volume">
                   <button
                     onClick={handleMuteToggle}
@@ -475,13 +455,11 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
                   />
                 </div>
 
-                {/* Status Indicator */}
                 <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-widest text-violet-400">
                   Native Player (Ad-Free)
                 </span>
               </div>
 
-              {/* Right panel controls */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={reloadStream}
@@ -504,7 +482,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
         )}
       </div>
 
-      {/* Dynamic Security/Compatibility Hint Alert Ribbon */}
       {!isDirectHls && sandboxShield && (
         <div className="bg-violet-50 dark:bg-violet-950/15 border border-violet-200 dark:border-violet-500/20 rounded-xl p-4 text-xs text-zinc-650 dark:text-zinc-400 leading-relaxed animate-fade-in space-y-2.5 shadow-sm">
           <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 font-bold">
@@ -523,10 +500,8 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
         </div>
       )}
 
-      {/* Dynamic Action Toolbar (Refresh, Theater, Fullscreen, Ad-Shield Toggle) */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-panel p-4 rounded-xl shadow-md">
         
-        {/* Left Side: Security Warning or Ad-Shield Toggle */}
         {!isDirectHls ? (
           <div className="flex items-center gap-3 bg-zinc-200/60 dark:bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-300/40 dark:border-zinc-900/60 w-full lg:w-auto shadow-inner">
             <div className="flex flex-col text-left">
@@ -566,9 +541,7 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
           </div>
         )}
 
-        {/* Right Side: Viewport Controls Group */}
         <div className="flex items-center gap-2 bg-zinc-200/60 dark:bg-zinc-950/60 p-1.5 rounded-lg border border-zinc-300/40 dark:border-zinc-900/60 w-full lg:w-auto justify-end shadow-inner">
-          {/* Refresh button */}
           <button
             onClick={reloadStream}
             className="rounded-md bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-3 py-1.5 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold border border-zinc-300 dark:border-zinc-950 shadow-sm cursor-pointer"
@@ -578,7 +551,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
             <span>Refresh</span>
           </button>
 
-          {/* Theater Mode Toggle button */}
           <button
             onClick={() => setIsTheaterMode(!isTheaterMode)}
             className={`rounded-md px-3 py-1.5 transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold border cursor-pointer ${
@@ -592,7 +564,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
             <span>{isTheaterMode ? "Normal Mode" : "Theater"}</span>
           </button>
 
-          {/* Fullscreen button */}
           <button
             onClick={toggleFullscreen}
             className="rounded-md bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 px-3 py-1.5 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold border border-zinc-300 dark:border-zinc-950 shadow-sm cursor-pointer"
@@ -605,7 +576,6 @@ export default function StreamPlayer({ streamUrl, channels, matchTitle, matchSta
 
       </div>
 
-      {/* Dedicated Servers Selection Panel */}
       <div className="glass-panel p-4 rounded-xl shadow-md">
         {allChannels.length > 0 ? (
           <div className="flex flex-col gap-2.5">
